@@ -3,9 +3,9 @@ name = "cns"
 version = "0.1.0"
 authors = ["adamsky <adamsky@enum.space>"]
 edition = "2018"
-description = ""
+description = "Crate name search."
 
 [dependencies]
 tui = { version = "0.10", default-features = false, features = ["crossterm"] }
 crossterm = "0.17"
-#crates_io_api = "0.6"
+crates_io_api = "0.6"
