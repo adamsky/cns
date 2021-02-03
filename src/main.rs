@@ -23,6 +23,7 @@ use tui::widgets::{
 use tui::Terminal;
 
 use crate::items::Crate;
+use std::ops::Sub;
 
 pub const HELP: &str = r#"
                   __
@@ -59,6 +60,8 @@ enum Mode {
     Search,
     Results,
 }
+
+const TAB_TITLES: [&str; 5] = ["Summary", "Readme", "Repository", "Stats", "Compare"];
 
 /// List of result crate items.
 #[derive(Default)]
@@ -254,6 +257,14 @@ fn main() -> Result<(), io::Error> {
                     // .margin(1)
                     .constraints([Constraint::Length(3), Constraint::Min(10)].as_ref())
                     .split(chunks_horiz[2]);
+
+                // only used for enlarged results block when comparing crates
+                let chunks_vert = Layout::default()
+                    .direction(Direction::Vertical)
+                    .margin(3)
+                    .constraints([Constraint::Length(3), Constraint::Min(10)].as_ref())
+                    .split(f.size());
+
                 let search_block = Block::default()
                     .title(search_block_title.as_str())
                     .borders(Borders::ALL)
@@ -265,21 +276,63 @@ fn main() -> Result<(), io::Error> {
                 let paragraph =
                     Paragraph::new(search_block_text_final.as_str()).block(search_block);
                 f.render_widget(paragraph, chunks_left[0]);
-                let results_block = Block::default()
-                    .title(results_block_label.as_str())
-                    .borders(Borders::ALL)
-                    .border_style(results_block_border_style);
                 let items = crates.items.lock().unwrap();
-                let list_items: Vec<ListItem> = items
+                let mut list_items: Vec<ListItem> = items
                     .iter()
                     .map(|i| ListItem::new(i.name.as_str()))
                     .collect::<Vec<ListItem>>()
                     .clone();
 
+                let mut rect = chunks_left[1];
+
+                // some changes to results block are needed for the compare tab
+                if results_current_tab == 4 {
+                    rect = chunks_vert[1];
+                    let comp_strings_titles =
+                        vec!["downloads ".to_string(), "recent downloads ".to_string()];
+                    let comp_strings_len: Vec<usize> =
+                        comp_strings_titles.iter().map(|cs| cs.len()).collect();
+                    // let comp_strings_len = vec!["downloads".len(), "recent downloads".len()];
+
+                    let mut new_list_items = Vec::new();
+                    for item in items.iter() {
+                        let recent_downloads_string = match item.recent_downloads {
+                            Some(s) => s.to_string(),
+                            None => "n/a".to_string(),
+                        };
+                        let comp_strings =
+                            vec![item.downloads.to_string(), recent_downloads_string];
+                        let item_string = create_list_item_string(
+                            item.name.to_string(),
+                            comp_strings,
+                            comp_strings_len.clone(),
+                            ' ',
+                            rect.width as usize,
+                        );
+                        let list_item = ListItem::new(Span::raw(item_string));
+                        new_list_items.push(list_item);
+                    }
+                    list_items = new_list_items;
+
+                    results_block_label.clear();
+                    results_block_label = create_list_item_string(
+                        "Results".to_string(),
+                        comp_strings_titles,
+                        comp_strings_len.clone(),
+                        '─',
+                        rect.width as usize,
+                    );
+                }
+
+                let mut results_block = Block::default()
+                    .title(results_block_label.as_str())
+                    .borders(Borders::ALL)
+                    .border_style(results_block_border_style);
                 let results = List::new(list_items)
                     .block(results_block)
                     .highlight_style(results_block_highlight_style);
-                f.render_stateful_widget(results, chunks_left[1], &mut crates.state);
+
+                f.render_stateful_widget(results, rect, &mut crates.state);
 
                 if show_intro {
                     let intro = widgets::Paragraph::new(HELP)
@@ -291,11 +344,7 @@ fn main() -> Result<(), io::Error> {
                         Span::styled("My", Style::default().fg(Color::Yellow)),
                         Span::raw(" text"),
                     ]);
-                    let titles = ["Summary", "Readme", "Repository", "Stats"]
-                        .iter()
-                        .cloned()
-                        .map(Spans::from)
-                        .collect();
+                    let titles = TAB_TITLES.iter().cloned().map(Spans::from).collect();
                     let top_tabs = Tabs::new(titles)
                         .select(results_current_tab)
                         .block(Block::default().title("").borders(Borders::BOTTOM))
@@ -371,6 +420,14 @@ fn main() -> Result<(), io::Error> {
                                     .block(Block::default().borders(Borders::NONE)),
                                 chunks_right[1],
                             );
+                        }
+                        4 => {
+                            // f.render_stateful_widget(results, chunks_horiz[0], &mut crates.state);
+                            // f.render_widget(
+                            //     widgets::Paragraph::new("3")
+                            //         .block(Block::default().borders(Borders::NONE)),
+                            //     chunks_right[1],
+                            // );
                         }
                         _ => (),
                     }
@@ -466,7 +523,7 @@ fn main() -> Result<(), io::Error> {
                                     }
                                 }
                                 KeyCode::Right | KeyCode::Char('l') => {
-                                    if results_current_tab < 3 {
+                                    if results_current_tab < TAB_TITLES.len() - 1 {
                                         results_current_tab += 1
                                     }
                                 }
@@ -585,3 +642,32 @@ fn crate_query(input: &str, client: &SyncClient) -> Result<Vec<Crate>, io::Error
 }
 
 // fn key_is_num(key_code: KeyCode) -> bool {}
+
+fn create_list_item_string(
+    left_string: String,
+    right_strings: Vec<String>,
+    right_strings_width: Vec<usize>,
+    space_char: char,
+    rect_width: usize,
+) -> String {
+    let mut item_string = left_string.to_string();
+    let mut left_right_delta = rect_width - left_string.len();
+    for right_string_width in &right_strings_width {
+        left_right_delta = left_right_delta.sub(right_string_width + 4);
+    }
+
+    for _ in 0..left_right_delta {
+        item_string.push(space_char);
+    }
+
+    for (i, right_string) in right_strings.iter().enumerate() {
+        let width_delta = right_strings_width[i] - right_string.len();
+        let rs = format!("| {}", right_string);
+        item_string.push_str(&rs);
+        for _ in 0..width_delta {
+            item_string.push(space_char);
+        }
+    }
+
+    item_string
+}
