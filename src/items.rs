@@ -22,21 +22,3 @@ pub(crate) struct Crate {
 
     pub readme: Option<String>,
 }
-
-// #[derive(Debug, Clone)]
-// pub(crate) struct Version {
-//     pub created_at: String,
-//     pub updated_at: String,
-//     pub dl_path: String,
-//     pub downloads: u64,
-//     pub features: HashMap<String, Vec<String>>,
-//     pub id: u64,
-//     pub num: String,
-//     pub yanked: bool,
-//     pub license: Option<String>,
-//     pub readme_path: Option<String>,
-//     pub readme: Option<String>,
-//     pub links: VersionLinks,
-//     pub crate_size: Option<u64>,
-//     pub published_by: Option<User>,
-// }

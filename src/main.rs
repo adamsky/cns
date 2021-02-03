@@ -54,22 +54,31 @@ pub const HELP: &str = r#"
 
 "#;
 
+/// Specifies current cursor location.
 enum Mode {
     Search,
     Results,
 }
 
+/// List of result crate items.
 #[derive(Default)]
 struct Crates {
+    /// List of crates
     items: Arc<Mutex<Vec<Crate>>>,
+    /// Current state of the user-facing list interface
     state: ListState,
 }
 
 impl Crates {
+    /// Creates a new `Crates` object using a list of `Crate` items.
     fn new(items: Vec<Crate>) -> Self {
         let items_arc = Arc::new(Mutex::new(items));
-
         let items_arc_clone = items_arc.clone();
+
+        // spawn a new thread that will query
+        //TODO currently super naive with sequential queries
+        // using a global lock on the crate list
+        //TODO
         std::thread::spawn(move || 'outer: loop {
             std::thread::sleep(Duration::from_millis(50));
             let mut items = items_arc_clone.lock().unwrap().clone();
@@ -133,10 +142,14 @@ impl Crates {
 
     fn select(&mut self, idx: Option<usize>) {
         if let Some(i) = idx {
-            if i < self.items.lock().unwrap().len() {
+            if i <= self.items.lock().unwrap().len() {
                 self.state.select(idx);
             } else {
+                // if let Some(select_target) = self.items.lock().unwrap().len().checked_sub(1) {
+                //     self.state.select(&select_target);
+                // }
                 self.state
+                    // .select(self.items.lock().unwrap().len().checked_sub(1))
                     .select(Some(self.items.lock().unwrap().len() - 1));
             }
         } else {
@@ -156,7 +169,9 @@ impl Crates {
     }
 }
 
+/// Defines the main application loop.
 fn main() -> Result<(), io::Error> {
+    // set up tui using crossterm backend
     let stdout = io::stdout();
     crossterm::terminal::enable_raw_mode().unwrap();
     let backend = CrosstermBackend::new(stdout);
@@ -164,28 +179,32 @@ fn main() -> Result<(), io::Error> {
     let mut stdout = io::stdout();
     terminal.clear().unwrap();
 
-    // create new client
+    // create new crates.io client
     let client = SyncClient::new(
-        "crate_name_search (github.com/adamsky/cns)",
+        "crate name search app (github.com/adamsky/cns)",
         std::time::Duration::from_millis(1000),
     )
     .unwrap();
 
+    // initialize crate items list
     let mut crates = Crates::default();
 
+    // start the application with the cursor on the search bar
     let mut current_mode = Mode::Search;
+    // show application intro/help information
     let mut show_intro = true;
 
+    // set up application interface blocks
     let mut search_block_title = "Search".to_string();
     let mut search_block_text = "".to_string();
     let mut results_block_label = "Results".to_string();
     let mut results_current_tab = 0;
-
     let mut search_block_border_style = Style::default().fg(tui::style::Color::DarkGray);
     let mut results_block_border_style = Style::default().fg(tui::style::Color::DarkGray);
     let mut results_block_highlight_style = Style::default().bg(tui::style::Color::DarkGray);
 
-    // support basic vim shortcuts like `gg` along with num prefixes
+    // store some information on previously pressed keys to support basic
+    // vim-like shortcuts like `gg`, along with num prefixed ones like `5j`
     let mut num_input = None;
     let mut last_key = KeyEvent {
         code: KeyCode::Null,
@@ -196,6 +215,7 @@ fn main() -> Result<(), io::Error> {
         modifiers: KeyModifiers::NONE,
     };
 
+    // start main application loop
     loop {
         // handle mode-specific changes
         match current_mode {
@@ -260,8 +280,6 @@ fn main() -> Result<(), io::Error> {
                     .block(results_block)
                     .highlight_style(results_block_highlight_style);
                 f.render_stateful_widget(results, chunks_left[1], &mut crates.state);
-                // drop(items);
-                // f.render_widget(results, chunks_left[1]);
 
                 if show_intro {
                     let intro = widgets::Paragraph::new(HELP)
@@ -328,7 +346,7 @@ fn main() -> Result<(), io::Error> {
                                             .clone()
                                             .unwrap_or("(downloading...)".to_string())
                                     } else {
-                                        "failed getting crate".to_string()
+                                        "failed getting crate's readme".to_string()
                                     }
                                 }
                                 None => "select a crate".to_string(),
@@ -356,73 +374,6 @@ fn main() -> Result<(), io::Error> {
                         }
                         _ => (),
                     }
-
-                    //                     let mut readme_text = "".to_string();
-                    //                     if let Some(repository_url) = &crates
-                    //                         .items
-                    //                         .get(crates.state.selected().unwrap())
-                    //                         .unwrap()
-                    //                         .repository
-                    //                     {
-                    //                         // let repository_short = repository_url.splitn(2, "//").collect::<Vec<&str>>()[0].splitn
-                    //                         let repo_short = format!(
-                    //                             "{}/{}",
-                    //                             repository_url.rsplitn(3, '/').collect::<Vec<&str>>()[1],
-                    //                             repository_url.rsplitn(3, '/').collect::<Vec<&str>>()[0]
-                    //                         );
-                    //                         // println!("{}", repo_short);
-                    //                         let mut buffer = vec![];
-                    //                         let mut handle = Easy::new();
-                    //                         handle
-                    //                             .url(&format!(
-                    //                                 "https://raw.githubusercontent.com/{}/master/README.md",
-                    //                                 repo_short
-                    //                             ))
-                    //                             .unwrap();
-                    //                         {
-                    //                             let mut transfer = handle.transfer();
-                    //                             transfer
-                    //                                 .write_function(|data| {
-                    //                                     buffer.extend_from_slice(data);
-                    //                                     Ok(data.len())
-                    //                                 })
-                    //                                 .unwrap();
-                    //                             transfer.perform().unwrap();
-                    //                         }
-                    //
-                    //                         // println!("{:?}", buffer.clone());
-                    //                         readme_text = String::from_utf8(buffer.clone()).unwrap();
-                    //                         // println!("{:?}", readme_text);
-                    //                     }
-                    //
-                    //                     let text = match crates.state.selected() {
-                    //                         Some(n) => format!(
-                    //                             "\n\
-                    // {}
-                    //
-                    // {:?}
-                    //
-                    // {}
-                    // ",
-                    //                             crates.items.get(n).unwrap().name,
-                    //                             crates.items.get(n).unwrap().description,
-                    //                             readme_text
-                    //                         ),
-                    //                         None => "nothing selected".to_string(),
-                    //                     };
-                    //                     // let name = Paragraph::new("\nthis = \"0.1.0\"").block(
-                    //                     //     Block::default().title("Cargo.toml").style(
-                    //                     //         Style::default()
-                    //                     //             .bg(tui::style::Color::Rgb(60, 60, 60))
-                    //                     //             .add_modifier(Modifier::BOLD),
-                    //                     //     ),
-                    //                     // );
-                    //                     // f.render_widget(name, chunks_right[0]);
-                    //                     let details = widgets::Paragraph::new(text.as_str())
-                    //                         // .style(Style::default().add_modifier())
-                    //                         // .wrap(tui::widgets::Wrap::)
-                    //                         .block(Block::default().borders(Borders::NONE));
-                    //                     f.render_widget(details, chunks_right[1]);
                 }
             })
             .unwrap();
@@ -452,9 +403,6 @@ fn main() -> Result<(), io::Error> {
                                     };
                                 }
                                 KeyCode::Char('q') | KeyCode::Char('c') => break,
-                                //KeyCode::Char(c) => stdout.write_all(format!("{}", c).as_bytes()).unwrap(),
-                                //Key::Alt(c) => println!("^{}", c),
-                                //Key::Ctrl(c) => println!("*{}", c),
                                 _ => (),
                             }
                         } else {
@@ -511,6 +459,7 @@ fn main() -> Result<(), io::Error> {
                             }
                         } else {
                             match kc {
+                                KeyCode::Esc => current_mode = Mode::Search,
                                 KeyCode::Left | KeyCode::Char('h') => {
                                     if results_current_tab > 0 {
                                         results_current_tab -= 1
@@ -585,8 +534,8 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
+/// Queries crates from the client using a simple string input.
 fn crate_query(input: &str, client: &SyncClient) -> Result<Vec<Crate>, io::Error> {
-    // println!("starting crate_query");
     let opt = ListOptions {
         sort: Sort::Relevance,
         per_page: 50,
@@ -594,8 +543,6 @@ fn crate_query(input: &str, client: &SyncClient) -> Result<Vec<Crate>, io::Error
         query: Some(input.to_string()),
     };
     let crates_response: CratesResponse = client.crates(opt).unwrap();
-
-    // println!("versions: {:?}", crates_response.versions);
 
     let mut crates = Vec::new();
     for crate_response in &crates_response.crates {

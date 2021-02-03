@@ -10,7 +10,5 @@ tui = { version = "0.10", default-features = false, features = ["crossterm"] }
 crossterm = "0.17"
 crates_io_api = "0.6.1"
 webbrowser = "0.5.5"
-#git2 = "0.13.10"
 curl = "0.4.33"
-#smol = "1.2.5"
 strip_markdown = "0.2.0"
