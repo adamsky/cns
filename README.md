@@ -17,7 +17,7 @@ Search through Rust crates without leaving the terminal.
 |__ --|  -__|  _  |   _|  __||     |
 |_____|_____|___._|__| |____||__|__|
 
-<C-h> toggle help window
+<C-h> toggle this help window
 
 # search mode
 <C-s> clear input
@@ -26,11 +26,12 @@ Search through Rust crates without leaving the terminal.
 <C-q> | <C-c> quit
 
 # results mode
-<C-s> focus the search bar
+<Escape> | <C-s> focus the search bar
 <j>, <k>, <up>, <down> move up and down the results
 <h>, <l>, <left>, <right> move left and right between result tabs
+<C-g> go to documentation (browser)
+<C-r> go to repository (browser)
 <Enter> go to crate (browser)
-<C-g> go to repository (browser)
 <C-q> | <C-c> | <q> quit
 
 ```  
