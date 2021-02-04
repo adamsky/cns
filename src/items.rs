@@ -1,5 +1,7 @@
-use crates_io_api::{CrateLinks, User, VersionLinks};
 use std::collections::HashMap;
+
+use chrono::{DateTime, Utc};
+use crates_io_api::{CrateLinks, User, VersionLinks};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Crate {
@@ -16,8 +18,8 @@ pub(crate) struct Crate {
     pub keywords: Option<Vec<String>>,
     pub max_version: String,
     pub links: CrateLinks,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub exact_match: Option<bool>,
 
     pub readme: Option<String>,

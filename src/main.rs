@@ -23,6 +23,7 @@ use tui::widgets::{
 use tui::Terminal;
 
 use crate::items::Crate;
+use chrono::{DateTime, Utc};
 use std::ops::Sub;
 
 pub const HELP: &str = r#"
@@ -46,11 +47,12 @@ pub const HELP: &str = r#"
 <C-q> | <C-c> quit
 
 # results mode
-<C-s> focus the search bar
+<Escape> | <C-s> focus the search bar
 <j>, <k>, <up>, <down> move up and down the results
 <h>, <l>, <left>, <right> move left and right between result tabs
+<C-g> go to documentation (browser)
+<C-r> go to repository (browser)
 <Enter> go to crate (browser)
-<C-g> go to repository (browser)
 <C-q> | <C-c> | <q> quit
 
 "#;
@@ -61,7 +63,7 @@ enum Mode {
     Results,
 }
 
-const TAB_TITLES: [&str; 5] = ["Summary", "Readme", "Repository", "Stats", "Compare"];
+const TAB_TITLES: [&str; 5] = ["Summary", "Compare", "Readme", "Repository", "Stats"];
 
 /// List of result crate items.
 #[derive(Default)]
@@ -286,7 +288,7 @@ fn main() -> Result<(), io::Error> {
                 let mut rect = chunks_left[1];
 
                 // some changes to results block are needed for the compare tab
-                if results_current_tab == 4 {
+                if results_current_tab == 1 {
                     rect = chunks_vert[1];
                     let comp_strings_titles =
                         vec!["downloads ".to_string(), "recent downloads ".to_string()];
@@ -307,6 +309,7 @@ fn main() -> Result<(), io::Error> {
                             comp_strings,
                             comp_strings_len.clone(),
                             ' ',
+                            '|',
                             rect.width as usize,
                         );
                         let list_item = ListItem::new(Span::raw(item_string));
@@ -319,6 +322,7 @@ fn main() -> Result<(), io::Error> {
                         "Results".to_string(),
                         comp_strings_titles,
                         comp_strings_len.clone(),
+                        '─',
                         '─',
                         rect.width as usize,
                     );
@@ -359,19 +363,29 @@ fn main() -> Result<(), io::Error> {
                                 Some(n) => {
                                     if let Some(item) = items.get(n) {
                                         format!(
-                                            "\n\
-                                            {}\n\n\
+                                            "{}\n\n\
                                             {}\n\n\n\
                                             All-time: {}\n\
                                             Recent: {}\n\
+                                            First created: {}\n\
                                             Last update: {}\n\
-                                            First created: {}\n",
+                                            Days since last update: {}\n\
+                                            \n\
+                                            Documentation: {}\n\
+                                            Repository: {}\n",
                                             item.name,
                                             item.description.as_ref().unwrap_or(&"".to_string()),
                                             item.downloads,
                                             item.recent_downloads.unwrap_or(0),
+                                            item.created_at,
                                             item.updated_at,
-                                            item.created_at
+                                            Utc::now().sub(item.updated_at).num_days(),
+                                            item.documentation
+                                                .as_ref()
+                                                .unwrap_or(&"unavailable".to_string()),
+                                            item.repository
+                                                .as_ref()
+                                                .unwrap_or(&"unavailable".to_string())
                                         )
                                     } else {
                                         "failed getting crate".to_string()
@@ -388,6 +402,14 @@ fn main() -> Result<(), io::Error> {
                             );
                         }
                         1 => {
+                            // f.render_stateful_widget(results, chunks_horiz[0], &mut crates.state);
+                            // f.render_widget(
+                            //     widgets::Paragraph::new("3")
+                            //         .block(Block::default().borders(Borders::NONE)),
+                            //     chunks_right[1],
+                            // );
+                        }
+                        2 => {
                             let readme = match crates.state.selected() {
                                 Some(n) => {
                                     if let Some(item) = items.get(n) {
@@ -407,27 +429,19 @@ fn main() -> Result<(), io::Error> {
                                 chunks_right[1],
                             );
                         }
-                        2 => {
+                        3 => {
                             f.render_widget(
                                 widgets::Paragraph::new("2")
                                     .block(Block::default().borders(Borders::NONE)),
                                 chunks_right[1],
                             );
                         }
-                        3 => {
+                        4 => {
                             f.render_widget(
                                 widgets::Paragraph::new("3")
                                     .block(Block::default().borders(Borders::NONE)),
                                 chunks_right[1],
                             );
-                        }
-                        4 => {
-                            // f.render_stateful_widget(results, chunks_horiz[0], &mut crates.state);
-                            // f.render_widget(
-                            //     widgets::Paragraph::new("3")
-                            //         .block(Block::default().borders(Borders::NONE)),
-                            //     chunks_right[1],
-                            // );
                         }
                         _ => (),
                     }
@@ -438,144 +452,162 @@ fn main() -> Result<(), io::Error> {
         if let Event::Key(key_event) = read().unwrap() {
             previous_key = last_key;
             last_key = key_event.clone();
-            if let KeyEvent {
-                code: kc,
-                modifiers: mods,
-            } = key_event
-            {
-                match current_mode {
-                    Mode::Search => {
-                        if mods == KeyModifiers::CONTROL {
-                            match kc {
-                                KeyCode::Char('h') => show_intro = !show_intro,
-                                KeyCode::Char('r') => current_mode = Mode::Results,
-                                KeyCode::Char('s') => {
-                                    if search_block_text.len() > 0 {
-                                        if let Some(space_idx) = search_block_text.find(" ") {
-                                            search_block_text =
-                                                search_block_text[0..space_idx].to_string();
-                                        } else {
-                                            search_block_text = "".to_string();
-                                        }
-                                    };
-                                }
-                                KeyCode::Char('q') | KeyCode::Char('c') => break,
-                                _ => (),
-                            }
-                        } else {
-                            match kc {
-                                KeyCode::Esc => current_mode = Mode::Results,
-                                KeyCode::Char(k) => {
-                                    search_block_text = format!("{}{}", search_block_text, k);
-                                }
-                                KeyCode::Backspace => {
-                                    if search_block_text.len() > 0 {
-                                        search_block_text = search_block_text
-                                            [0..search_block_text.len() - 1]
-                                            .to_string()
-                                    };
-                                }
-                                KeyCode::Enter => {
-                                    crates = Crates::new(
-                                        crate_query(&search_block_text, &client).unwrap(),
-                                    );
 
-                                    crates.select(Some(0));
-                                    show_intro = false;
-                                    current_mode = Mode::Results;
-                                }
-                                //KeyCode::Char(c) => stdout.write_all(format!("{}", c).as_bytes()).unwrap(),
-                                //Key::Alt(c) => println!("^{}", c),
-                                //Key::Ctrl(c) => println!("*{}", c),
-                                _ => (),
+            match current_mode {
+                // bindings for when the cursor is focused on search
+                Mode::Search => {
+                    if key_event.modifiers == KeyModifiers::CONTROL {
+                        match key_event.code {
+                            KeyCode::Char('h') => show_intro = !show_intro,
+                            KeyCode::Char('r') => current_mode = Mode::Results,
+                            KeyCode::Char('s') => {
+                                if search_block_text.len() > 0 {
+                                    if let Some(space_idx) = search_block_text.find(" ") {
+                                        search_block_text =
+                                            search_block_text[0..space_idx].to_string();
+                                    } else {
+                                        search_block_text = "".to_string();
+                                    }
+                                };
                             }
+                            KeyCode::Char('q') | KeyCode::Char('c') => break,
+                            _ => (),
+                        }
+                    } else {
+                        match key_event.code {
+                            KeyCode::Esc => current_mode = Mode::Results,
+                            KeyCode::Char(k) => {
+                                search_block_text = format!("{}{}", search_block_text, k);
+                            }
+                            KeyCode::Backspace => {
+                                if search_block_text.len() > 0 {
+                                    search_block_text = search_block_text
+                                        [0..search_block_text.len() - 1]
+                                        .to_string()
+                                };
+                            }
+                            KeyCode::Enter => {
+                                crates =
+                                    Crates::new(crate_query(&search_block_text, &client).unwrap());
+
+                                crates.select(Some(0));
+                                show_intro = false;
+                                current_mode = Mode::Results;
+                            }
+                            //KeyCode::Char(c) => stdout.write_all(format!("{}", c).as_bytes()).unwrap(),
+                            //Key::Alt(c) => println!("^{}", c),
+                            //Key::Ctrl(c) => println!("*{}", c),
+                            _ => (),
                         }
                     }
-                    Mode::Results => {
-                        if mods == KeyModifiers::CONTROL {
-                            match kc {
-                                KeyCode::Char('h') => show_intro = !show_intro,
-                                KeyCode::Char('q') | KeyCode::Char('c') => break,
-                                KeyCode::Char('s') => current_mode = Mode::Search,
-                                KeyCode::Char('g') => {
-                                    if let Some(selected_crate) = crates.state.selected() {
-                                        if let Some(repo_url) = &crates
+                }
+                // bindings for when cursor is focused on the results
+                Mode::Results => {
+                    // bindings with the ctrl key
+                    if key_event.modifiers == KeyModifiers::CONTROL {
+                        match key_event.code {
+                            // show intro with bindings help
+                            KeyCode::Char('h') => show_intro = !show_intro,
+                            // focus the search mode
+                            KeyCode::Char('s') => current_mode = Mode::Search,
+                            // open crate repository in the browser
+                            KeyCode::Char('r') => {
+                                if let Some(selected_crate) = crates.state.selected() {
+                                    if let Some(url) = &crates
+                                        .items
+                                        .lock()
+                                        .unwrap()
+                                        .get(selected_crate)
+                                        .unwrap()
+                                        .repository
+                                    {
+                                        webbrowser::open(url);
+                                    }
+                                }
+                            }
+                            KeyCode::Char('g') => {
+                                if let Some(selected_crate) = crates.state.selected() {
+                                    if let Some(url) = &crates
+                                        .items
+                                        .lock()
+                                        .unwrap()
+                                        .get(selected_crate)
+                                        .unwrap()
+                                        .documentation
+                                    {
+                                        webbrowser::open(url);
+                                    }
+                                }
+                            }
+                            // quit the application altogether
+                            KeyCode::Char('q') | KeyCode::Char('c') => break,
+
+                            _ => continue,
+                        }
+                    } else {
+                        match key_event.code {
+                            // focus the search mode
+                            KeyCode::Esc => current_mode = Mode::Search,
+                            KeyCode::Left | KeyCode::Char('h') => {
+                                if results_current_tab > 0 {
+                                    results_current_tab -= 1
+                                }
+                            }
+                            KeyCode::Right | KeyCode::Char('l') => {
+                                if results_current_tab < TAB_TITLES.len() - 1 {
+                                    results_current_tab += 1
+                                }
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => match num_input {
+                                None => crates.select_previous(None),
+                                Some(n) => crates.select_previous(Some(n as usize)),
+                            },
+                            KeyCode::Down | KeyCode::Char('j') => match num_input {
+                                None => crates.select_next(None),
+                                Some(n) => crates.select_next(Some(n as usize)),
+                            },
+                            // open crate page in the browser
+                            KeyCode::Enter => {
+                                if let Some(selected_crate) = crates.state.selected() {
+                                    webbrowser::open(&format!(
+                                        "https://crates.io/crates/{}",
+                                        crates
                                             .items
                                             .lock()
                                             .unwrap()
                                             .get(selected_crate)
                                             .unwrap()
-                                            .repository
-                                        {
-                                            webbrowser::open(repo_url);
-                                        }
-                                    }
+                                            .id
+                                    ));
                                 }
-
-                                _ => continue,
                             }
-                        } else {
-                            match kc {
-                                KeyCode::Esc => current_mode = Mode::Search,
-                                KeyCode::Left | KeyCode::Char('h') => {
-                                    if results_current_tab > 0 {
-                                        results_current_tab -= 1
-                                    }
-                                }
-                                KeyCode::Right | KeyCode::Char('l') => {
-                                    if results_current_tab < TAB_TITLES.len() - 1 {
-                                        results_current_tab += 1
-                                    }
-                                }
-                                KeyCode::Up | KeyCode::Char('k') => match num_input {
-                                    None => crates.select_previous(None),
-                                    Some(n) => crates.select_previous(Some(n as usize)),
-                                },
-                                KeyCode::Down | KeyCode::Char('j') => match num_input {
-                                    None => crates.select_next(None),
-                                    Some(n) => crates.select_next(Some(n as usize)),
-                                },
-                                KeyCode::Enter => {
-                                    if let Some(selected_crate) = crates.state.selected() {
-                                        webbrowser::open(&format!(
-                                            "https://crates.io/crates/{}",
-                                            crates
-                                                .items
-                                                .lock()
-                                                .unwrap()
-                                                .get(selected_crate)
-                                                .unwrap()
-                                                .id
-                                        ));
-                                    }
-                                }
-                                KeyCode::Char(ch) => match ch {
-                                    '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
-                                        match num_input {
-                                            None => num_input = ch.to_digit(10),
-                                            Some(n) => {
-                                                num_input = Some(n * 10 + ch.to_digit(10).unwrap())
-                                            }
-                                        }
-                                        continue;
-                                    }
-                                    'g' => {
-                                        if let KeyCode::Char('g') = last_key.code {
-                                            if let KeyCode::Char('g') = previous_key.code {
-                                                crates.select(Some(0));
-                                            }
+                            KeyCode::Char(ch) => match ch {
+                                '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+                                    match num_input {
+                                        None => num_input = ch.to_digit(10),
+                                        Some(n) => {
+                                            num_input = Some(n * 10 + ch.to_digit(10).unwrap())
                                         }
                                     }
-                                    'G' => {
-                                        let num = crates.items.lock().unwrap().len() - 1;
-                                        crates.select(Some(num));
+                                    continue;
+                                }
+                                'g' => {
+                                    if let KeyCode::Char('g') = last_key.code {
+                                        if let KeyCode::Char('g') = previous_key.code {
+                                            crates.select(Some(0));
+                                        }
                                     }
-                                    'q' => break,
-                                    _ => (),
-                                },
-
+                                }
+                                'G' => {
+                                    let num = crates.items.lock().unwrap().len() - 1;
+                                    crates.select(Some(num));
+                                }
+                                // quit the application
+                                'q' => break,
                                 _ => (),
-                            }
+                            },
+
+                            _ => (),
                         }
                     }
                 }
@@ -618,36 +650,22 @@ fn crate_query(input: &str, client: &SyncClient) -> Result<Vec<Crate>, io::Error
             keywords: crate_response.keywords.clone(),
             max_version: crate_response.max_version.clone(),
             links: crate_response.links.clone(),
-            created_at: crate_response.created_at.to_rfc2822(),
-            updated_at: crate_response.updated_at.to_rfc2822(),
+            created_at: crate_response.created_at,
+            updated_at: crate_response.updated_at,
             exact_match: crate_response.exact_match,
             readme: None,
         })
     }
 
     Ok(crates)
-
-    // crates_result.crates.iter().next().unwrap().name
-
-    // for c in summary.most_downloaded {
-    //     println!("{}:", c.id);
-    //     for dep in client.crate_dependencies(&c.id, &c.max_version)? {
-    //         // Ignore optional dependencies.
-    //         if !dep.optional {
-    //             println!("    * {} - {}", dep.id, dep.version_id);
-    //         }
-    //     }
-    // }
-    // Ok(())
 }
-
-// fn key_is_num(key_code: KeyCode) -> bool {}
 
 fn create_list_item_string(
     left_string: String,
     right_strings: Vec<String>,
     right_strings_width: Vec<usize>,
     space_char: char,
+    div_char: char,
     rect_width: usize,
 ) -> String {
     let mut item_string = left_string.to_string();
@@ -662,7 +680,7 @@ fn create_list_item_string(
 
     for (i, right_string) in right_strings.iter().enumerate() {
         let width_delta = right_strings_width[i] - right_string.len();
-        let rs = format!("| {}", right_string);
+        let rs = format!("{} {}", div_char, right_string);
         item_string.push_str(&rs);
         for _ in 0..width_delta {
             item_string.push(space_char);
