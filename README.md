@@ -1,9 +1,11 @@
-
 # crate name search
 
 Search through Rust crates without leaving the terminal.
 
 **Work in progress. Approach with caution.**
+
+![](.github/cns_demo.gif)
+
 
 ## How to install `cns`
 
@@ -18,6 +20,7 @@ git clone https://github.com/adamsky/cns
 cd ./cns
 cargo run --release
 ```
+
 
 ## How to use `cns`
 
