@@ -3,6 +3,8 @@
 
 Search through Rust crates without leaving the terminal.
 
+**Work in progress. Approach with caution.**
+
 ## How to use `cns`
 
 ```
