@@ -5,6 +5,20 @@ Search through Rust crates without leaving the terminal.
 
 **Work in progress. Approach with caution.**
 
+## How to install `cns`
+
+```
+cargo install cns
+```
+
+or
+
+```
+git clone https://github.com/adamsky/cns
+cd ./cns
+cargo run --release
+```
+
 ## How to use `cns`
 
 ```
