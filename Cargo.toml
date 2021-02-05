@@ -3,7 +3,11 @@ name = "cns"
 version = "0.1.0"
 authors = ["adamsky <adamsky@enum.space>"]
 edition = "2018"
-description = "Crate name search."
+description = "Search through Rust crates without leaving the terminal."
+repository = "https://github.com/adamsky/cns"
+keywords = ["crates", "crates-io", "search", "tui", "terminal"]
+readme = "README.md"
+license = "MIT"
 
 [dependencies]
 tui = { version = "0.10", default-features = false, features = ["crossterm"] }
