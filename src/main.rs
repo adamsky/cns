@@ -80,27 +80,25 @@ impl Crates {
         let items_arc = Arc::new(Mutex::new(items));
         let items_arc_clone = items_arc.clone();
 
-        // spawn a new thread that will query
-        //TODO currently super naive with sequential queries
+        // spawn a new thread that will query crates' readmes
+        //TODO this is a quick and dirty approach with sequential queries
         // using a global lock on the crate list
-        //TODO
+        //TODO find a better way to get crate readmes
         std::thread::spawn(move || 'outer: loop {
             std::thread::sleep(Duration::from_millis(50));
             let mut items = items_arc_clone.lock().unwrap().clone();
             for (n, item) in &mut items.iter().enumerate() {
                 if item.readme.is_none() && item.repository.is_some() {
-                    // let repository_short = repository_url.splitn(2, "//").collect::<Vec<&str>>()[0].splitn
                     let repo_url = item.repository.clone().unwrap();
-                    // println!("{}", repo_url);
                     let repo_short = format!(
                         "{}/{}",
                         repo_url.rsplitn(3, '/').collect::<Vec<&str>>()[1],
                         repo_url.rsplitn(3, '/').collect::<Vec<&str>>()[0]
                     );
-                    // println!("{}", repo_short);
 
                     let mut buffer = vec![];
                     let mut handle = Easy::new();
+                    // this only works for github/gitlab repos with master branch
                     let url = if repo_url.contains("github") {
                         format!(
                             "https://raw.githubusercontent.com/{}/master/README.md",
@@ -122,15 +120,9 @@ impl Crates {
                         transfer.perform();
                     }
 
-                    // item.readme = Some(strip_markdown::strip_markdown(
-                    //     &String::from_utf8(buffer.clone()).unwrap(),
-                    // ));
                     items_arc_clone.lock().unwrap().get_mut(n).unwrap().readme = Some(
                         strip_markdown::strip_markdown(&String::from_utf8(buffer.clone()).unwrap()),
                     );
-
-                    // println!("{:?}", item.readme);
-                    // continue 'outer;
                 }
             }
         });
@@ -141,31 +133,32 @@ impl Crates {
         }
     }
 
+    /// Adds crate item to the collection.
     fn add(&mut self, item: Crate) {
         self.items.lock().unwrap().push(item);
     }
 
+    /// Selects crate in the collection based on the given index.
+    /// If index is `None` deselects the current selection.
     fn select(&mut self, idx: Option<usize>) {
         if let Some(i) = idx {
-            if i <= self.items.lock().unwrap().len() {
+            if i < self.items.lock().unwrap().len() {
                 self.state.select(idx);
             } else {
-                // if let Some(select_target) = self.items.lock().unwrap().len().checked_sub(1) {
-                //     self.state.select(&select_target);
-                // }
                 self.state
-                    // .select(self.items.lock().unwrap().len().checked_sub(1))
-                    .select(Some(self.items.lock().unwrap().len() - 1));
+                    .select(self.items.lock().unwrap().len().checked_sub(1))
             }
         } else {
             self.state.select(idx);
         }
     }
 
+    /// Selects next crate in the collection.
     fn select_next(&mut self, n: Option<usize>) {
         self.select(self.state.selected().map(|i| i + n.unwrap_or(1)));
     }
 
+    /// Selects previous crate in the collection.
     fn select_previous(&mut self, n: Option<usize>) {
         self.select(self.state.selected().map(|i| match i {
             0 => 0,
@@ -290,11 +283,13 @@ fn main() -> Result<(), io::Error> {
                 // some changes to results block are needed for the compare tab
                 if results_current_tab == 1 {
                     rect = chunks_vert[1];
-                    let comp_strings_titles =
-                        vec!["downloads ".to_string(), "recent downloads ".to_string()];
+                    let comp_strings_titles = vec![
+                        "Days since update ".to_string(),
+                        "All-time ".to_string(),
+                        "Recent".to_string(),
+                    ];
                     let comp_strings_len: Vec<usize> =
                         comp_strings_titles.iter().map(|cs| cs.len()).collect();
-                    // let comp_strings_len = vec!["downloads".len(), "recent downloads".len()];
 
                     let mut new_list_items = Vec::new();
                     for item in items.iter() {
@@ -302,8 +297,13 @@ fn main() -> Result<(), io::Error> {
                             Some(s) => s.to_string(),
                             None => "n/a".to_string(),
                         };
-                        let comp_strings =
-                            vec![item.downloads.to_string(), recent_downloads_string];
+                        let days_since_update =
+                            Utc::now().sub(item.updated_at).num_days().to_string();
+                        let comp_strings = vec![
+                            days_since_update,
+                            item.downloads.to_string(),
+                            recent_downloads_string,
+                        ];
                         let item_string = create_list_item_string(
                             item.name.to_string(),
                             comp_strings,
@@ -354,7 +354,6 @@ fn main() -> Result<(), io::Error> {
                         .block(Block::default().title("").borders(Borders::BOTTOM))
                         .style(Style::default().fg(Color::DarkGray))
                         .highlight_style(Style::default().fg(Color::White));
-                    // .divider(tui::symbols::);
                     f.render_widget(top_tabs, chunks_right[0]);
 
                     match results_current_tab {
@@ -402,12 +401,7 @@ fn main() -> Result<(), io::Error> {
                             );
                         }
                         1 => {
-                            // f.render_stateful_widget(results, chunks_horiz[0], &mut crates.state);
-                            // f.render_widget(
-                            //     widgets::Paragraph::new("3")
-                            //         .block(Block::default().borders(Borders::NONE)),
-                            //     chunks_right[1],
-                            // );
+                            // compare tab renders a wider results block
                         }
                         2 => {
                             let readme = match crates.state.selected() {
@@ -431,14 +425,14 @@ fn main() -> Result<(), io::Error> {
                         }
                         3 => {
                             f.render_widget(
-                                widgets::Paragraph::new("2")
+                                widgets::Paragraph::new("WIP")
                                     .block(Block::default().borders(Borders::NONE)),
                                 chunks_right[1],
                             );
                         }
                         4 => {
                             f.render_widget(
-                                widgets::Paragraph::new("3")
+                                widgets::Paragraph::new("WIP")
                                     .block(Block::default().borders(Borders::NONE)),
                                 chunks_right[1],
                             );
@@ -494,9 +488,6 @@ fn main() -> Result<(), io::Error> {
                                 show_intro = false;
                                 current_mode = Mode::Results;
                             }
-                            //KeyCode::Char(c) => stdout.write_all(format!("{}", c).as_bytes()).unwrap(),
-                            //Key::Alt(c) => println!("^{}", c),
-                            //Key::Ctrl(c) => println!("*{}", c),
                             _ => (),
                         }
                     }
@@ -619,6 +610,7 @@ fn main() -> Result<(), io::Error> {
         stdout.flush().unwrap();
     }
 
+    // clean up the terminal before exit
     terminal.clear().unwrap();
     Ok(())
 }
@@ -635,7 +627,6 @@ fn crate_query(input: &str, client: &SyncClient) -> Result<Vec<Crate>, io::Error
 
     let mut crates = Vec::new();
     for crate_response in &crates_response.crates {
-        // println!("{:?}", crate_response);
         crates.push(Crate {
             id: crate_response.id.clone(),
             name: crate_response.name.clone(),
@@ -660,6 +651,10 @@ fn crate_query(input: &str, client: &SyncClient) -> Result<Vec<Crate>, io::Error
     Ok(crates)
 }
 
+/// Creates a new results list item string using a bunch of arguments.
+///
+/// Organizes text into a left and right column, where the right column
+/// consists of zero or more elements.
 fn create_list_item_string(
     left_string: String,
     right_strings: Vec<String>,
@@ -669,15 +664,19 @@ fn create_list_item_string(
     rect_width: usize,
 ) -> String {
     let mut item_string = left_string.to_string();
+
+    // calculate space between the end of the left and beginning of the right
     let mut left_right_delta = rect_width - left_string.len();
     for right_string_width in &right_strings_width {
         left_right_delta = left_right_delta.sub(right_string_width + 4);
     }
 
+    // push the right amount of space characters
     for _ in 0..left_right_delta {
         item_string.push(space_char);
     }
 
+    // push all the right column strings
     for (i, right_string) in right_strings.iter().enumerate() {
         let width_delta = right_strings_width[i] - right_string.len();
         let rs = format!("{} {}", div_char, right_string);
