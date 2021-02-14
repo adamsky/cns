@@ -8,11 +8,9 @@ use std::time::Duration;
 use consecrates::api::{CrateResponse, Crates};
 use consecrates::Client;
 
-// use crates_io_api::{CrateResponse, CratesResponse, ListOptions, Sort, SyncClient};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
-// use curl::easy::Easy;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
 use tui::backend::CrosstermBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
@@ -89,7 +87,7 @@ impl CratesList {
         // using a global lock on the crate list
         //TODO find a better way to get crate readmes
         std::thread::spawn(move || 'outer: loop {
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(100));
             let mut items = items_arc_clone.lock().unwrap().clone();
             for (n, item) in &mut items.iter().enumerate() {
                 if item.readme.is_none() && item.repository.is_some() {
@@ -112,23 +110,10 @@ impl CratesList {
                         continue;
                     };
 
-                    // handle.url(&url);
-                    // {
-                    //     let mut transfer = handle.transfer();
-                    //     transfer.write_function(|data| {
-                    //         buffer.extend_from_slice(data);
-                    //         Ok(data.len())
-                    //     });
-                    //     transfer.perform();
-                    // }
-
                     let mut buffer = vec![];
                     if let Ok(resp) = http_req::request::get(url, &mut buffer) {
                         items_arc_clone.lock().unwrap().get_mut(n).unwrap().readme =
-                            // Some(strip_markdown::strip_markdown(
-                            //     &String::from_utf8(buffer.clone()).unwrap(),
-                            // ));
-                        Some(String::from_utf8(buffer.clone()).unwrap());
+                            Some(String::from_utf8(buffer.clone()).unwrap());
                     }
                 }
             }
