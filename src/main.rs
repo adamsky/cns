@@ -54,6 +54,8 @@ pub const HELP: &str = r#"
 
 "#;
 
+pub const README_SCROLL_AMOUNT: u16 = 8;
+
 /// Specifies current cursor location.
 enum Mode {
     Search,
@@ -73,7 +75,9 @@ struct CratesList {
     /// List of crates
     items: Arc<Mutex<Vec<Crate>>>,
     /// Current state of the user-facing list interface
-    state: ListState,
+    list_state: ListState,
+    /// Current vertical offset of the readme viewport
+    readme_scroll: u16,
 }
 
 impl CratesList {
@@ -121,7 +125,8 @@ impl CratesList {
 
         CratesList {
             items: items_arc,
-            state: ListState::default(),
+            list_state: ListState::default(),
+            readme_scroll: 0,
         }
     }
 
@@ -135,24 +140,27 @@ impl CratesList {
     fn select(&mut self, idx: Option<usize>) {
         if let Some(i) = idx {
             if i < self.items.lock().unwrap().len() {
-                self.state.select(idx);
+                self.list_state.select(idx);
             } else {
-                self.state
-                    .select(self.items.lock().unwrap().len().checked_sub(1))
+                self.list_state
+                    .select(self.items.lock().unwrap().len().checked_sub(1));
             }
         } else {
-            self.state.select(idx);
+            self.list_state.select(idx);
         }
+
+        // reset the readme scroll on change to current selection
+        self.readme_scroll = 0;
     }
 
     /// Selects next crate in the collection.
     fn select_next(&mut self, n: Option<usize>) {
-        self.select(self.state.selected().map(|i| i + n.unwrap_or(1)));
+        self.select(self.list_state.selected().map(|i| i + n.unwrap_or(1)));
     }
 
     /// Selects previous crate in the collection.
     fn select_previous(&mut self, n: Option<usize>) {
-        self.select(self.state.selected().map(|i| match i {
+        self.select(self.list_state.selected().map(|i| match i {
             0 => 0,
             _ => i.checked_sub(n.unwrap_or(1)).unwrap_or(0),
         }))
@@ -324,7 +332,7 @@ fn main() -> Result<()> {
                     .block(results_block)
                     .highlight_style(results_block_highlight_style);
 
-                f.render_stateful_widget(results, rect, &mut crates.state);
+                f.render_stateful_widget(results, rect, &mut crates.list_state);
 
                 if show_intro {
                     let intro = widgets::Paragraph::new(HELP)
@@ -346,7 +354,7 @@ fn main() -> Result<()> {
 
                     match results_current_tab {
                         0 => {
-                            let summary = match crates.state.selected() {
+                            let summary = match crates.list_state.selected() {
                                 Some(n) => {
                                     if let Some(item) = items.get(n) {
                                         format!(
@@ -392,20 +400,21 @@ fn main() -> Result<()> {
                             // compare tab renders a wider results block
                         }
                         2 => {
-                            let readme = match crates.state.selected() {
+                            let readme = match crates.list_state.selected() {
                                 Some(n) => {
                                     if let Some(item) = items.get(n) {
                                         item.readme
                                             .clone()
                                             .unwrap_or("(downloading...)".to_string())
                                     } else {
-                                        "failed getting crate's readme".to_string()
+                                        "failed getting crate".to_string()
                                     }
                                 }
                                 None => "select a crate".to_string(),
                             };
                             f.render_widget(
                                 widgets::Paragraph::new(readme.as_str())
+                                    .scroll((crates.readme_scroll, 0))
                                     .wrap(Wrap { trim: false })
                                     .block(Block::default().borders(Borders::NONE)),
                                 chunks_right[1],
@@ -492,7 +501,7 @@ fn main() -> Result<()> {
                             KeyCode::Char('s') => current_mode = Mode::Search,
                             // open crate repository in the browser
                             KeyCode::Char('r') => {
-                                if let Some(selected_crate) = crates.state.selected() {
+                                if let Some(selected_crate) = crates.list_state.selected() {
                                     if let Some(url) = &crates
                                         .items
                                         .lock()
@@ -506,7 +515,7 @@ fn main() -> Result<()> {
                                 }
                             }
                             KeyCode::Char('g') => {
-                                if let Some(selected_crate) = crates.state.selected() {
+                                if let Some(selected_crate) = crates.list_state.selected() {
                                     if let Some(url) = &crates
                                         .items
                                         .lock()
@@ -517,6 +526,21 @@ fn main() -> Result<()> {
                                     {
                                         webbrowser::open(url);
                                     }
+                                }
+                            }
+                            KeyCode::Char('d') => {
+                                if results_current_tab == 2 {
+                                    crates.readme_scroll += README_SCROLL_AMOUNT;
+                                }
+                            }
+                            KeyCode::Char('u') => {
+                                if results_current_tab == 2 {
+                                    let mut sub = crates.readme_scroll as isize
+                                        - README_SCROLL_AMOUNT as isize;
+                                    if sub < 0 {
+                                        sub = 0;
+                                    }
+                                    crates.readme_scroll = sub as u16;
                                 }
                             }
                             // quit the application altogether
@@ -548,7 +572,7 @@ fn main() -> Result<()> {
                             },
                             // open crate page in the browser
                             KeyCode::Enter => {
-                                if let Some(selected_crate) = crates.state.selected() {
+                                if let Some(selected_crate) = crates.list_state.selected() {
                                     webbrowser::open(&format!(
                                         "https://crates.io/crates/{}",
                                         crates
