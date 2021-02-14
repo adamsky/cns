@@ -1,18 +1,18 @@
 #![allow(unused)]
 
-extern crate curl;
-extern crate tui;
-extern crate webbrowser;
-
-mod items;
-
 use std::io::{self, Write};
-
-use crates_io_api::{CrateResponse, CratesResponse, ListOptions, Sort, SyncClient};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
-use curl::easy::Easy;
+use std::ops::Sub;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use consecrates::api::{CrateResponse, Crates};
+use consecrates::Client;
+
+// use crates_io_api::{CrateResponse, CratesResponse, ListOptions, Sort, SyncClient};
+use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+// use curl::easy::Easy;
+use anyhow::Result;
+use chrono::{DateTime, Utc};
 use tui::backend::CrosstermBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
@@ -22,9 +22,8 @@ use tui::widgets::{
 };
 use tui::Terminal;
 
-use crate::items::Crate;
-use chrono::{DateTime, Utc};
-use std::ops::Sub;
+mod items;
+use items::Crate;
 
 pub const HELP: &str = r#"
                   __
@@ -65,16 +64,21 @@ enum Mode {
 
 const TAB_TITLES: [&str; 5] = ["Summary", "Compare", "Readme", "Repository", "Stats"];
 
-/// List of result crate items.
+/// List of crate items.
+///
+/// # State
+///
+/// This struct holds both the crate structs and the current state of the
+/// TUI list.
 #[derive(Default)]
-struct Crates {
+struct CratesList {
     /// List of crates
     items: Arc<Mutex<Vec<Crate>>>,
     /// Current state of the user-facing list interface
     state: ListState,
 }
 
-impl Crates {
+impl CratesList {
     /// Creates a new `Crates` object using a list of `Crate` items.
     fn new(items: Vec<Crate>) -> Self {
         let items_arc = Arc::new(Mutex::new(items));
@@ -96,8 +100,6 @@ impl Crates {
                         repo_url.rsplitn(3, '/').collect::<Vec<&str>>()[0]
                     );
 
-                    let mut buffer = vec![];
-                    let mut handle = Easy::new();
                     // this only works for github/gitlab repos with master branch
                     let url = if repo_url.contains("github") {
                         format!(
@@ -110,24 +112,29 @@ impl Crates {
                         continue;
                     };
 
-                    handle.url(&url);
-                    {
-                        let mut transfer = handle.transfer();
-                        transfer.write_function(|data| {
-                            buffer.extend_from_slice(data);
-                            Ok(data.len())
-                        });
-                        transfer.perform();
-                    }
+                    // handle.url(&url);
+                    // {
+                    //     let mut transfer = handle.transfer();
+                    //     transfer.write_function(|data| {
+                    //         buffer.extend_from_slice(data);
+                    //         Ok(data.len())
+                    //     });
+                    //     transfer.perform();
+                    // }
 
-                    items_arc_clone.lock().unwrap().get_mut(n).unwrap().readme = Some(
-                        strip_markdown::strip_markdown(&String::from_utf8(buffer.clone()).unwrap()),
-                    );
+                    let mut buffer = vec![];
+                    if let Ok(resp) = http_req::request::get(url, &mut buffer) {
+                        items_arc_clone.lock().unwrap().get_mut(n).unwrap().readme =
+                            // Some(strip_markdown::strip_markdown(
+                            //     &String::from_utf8(buffer.clone()).unwrap(),
+                            // ));
+                        Some(String::from_utf8(buffer.clone()).unwrap());
+                    }
                 }
             }
         });
 
-        Crates {
+        CratesList {
             items: items_arc,
             state: ListState::default(),
         }
@@ -168,24 +175,20 @@ impl Crates {
 }
 
 /// Defines the main application loop.
-fn main() -> Result<(), io::Error> {
+fn main() -> Result<()> {
     // set up tui using crossterm backend
     let stdout = io::stdout();
     crossterm::terminal::enable_raw_mode().unwrap();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut stdout = io::stdout();
-    terminal.clear().unwrap();
+    terminal.clear()?;
 
     // create new crates.io client
-    let client = SyncClient::new(
-        "crate name search app (github.com/adamsky/cns)",
-        std::time::Duration::from_millis(1000),
-    )
-    .unwrap();
+    let client = Client::new("crate name search app (github.com/adamsky/cns)");
 
     // initialize crate items list
-    let mut crates = Crates::default();
+    let mut crates = CratesList::default();
 
     // start the application with the cursor on the search bar
     let mut current_mode = Mode::Search;
@@ -281,7 +284,7 @@ fn main() -> Result<(), io::Error> {
                 let mut rect = chunks_left[1];
 
                 // some changes to results block are needed for the compare tab
-                if results_current_tab == 1 {
+                if results_current_tab == 1 && !show_intro {
                     rect = chunks_vert[1];
                     let comp_strings_titles = vec![
                         "Days since update ".to_string(),
@@ -481,8 +484,9 @@ fn main() -> Result<(), io::Error> {
                                 };
                             }
                             KeyCode::Enter => {
-                                crates =
-                                    Crates::new(crate_query(&search_block_text, &client).unwrap());
+                                crates = CratesList::new(
+                                    crate_query(&search_block_text, &client).unwrap(),
+                                );
 
                                 crates.select(Some(0));
                                 show_intro = false;
@@ -616,14 +620,9 @@ fn main() -> Result<(), io::Error> {
 }
 
 /// Queries crates from the client using a simple string input.
-fn crate_query(input: &str, client: &SyncClient) -> Result<Vec<Crate>, io::Error> {
-    let opt = ListOptions {
-        sort: Sort::Relevance,
-        per_page: 50,
-        page: 1,
-        query: Some(input.to_string()),
-    };
-    let crates_response: CratesResponse = client.crates(opt).unwrap();
+fn crate_query(input: &str, client: &Client) -> Result<Vec<Crate>> {
+    let mut query = consecrates::Query::from_str(input);
+    let crates_response: Crates = client.get_crates(query)?;
 
     let mut crates = Vec::new();
     for crate_response in &crates_response.crates {
@@ -678,11 +677,12 @@ fn create_list_item_string(
 
     // push all the right column strings
     for (i, right_string) in right_strings.iter().enumerate() {
-        let width_delta = right_strings_width[i] - right_string.len();
-        let rs = format!("{} {}", div_char, right_string);
-        item_string.push_str(&rs);
-        for _ in 0..width_delta {
-            item_string.push(space_char);
+        if let Some(width_delta) = right_strings_width[i].checked_sub(right_string.len()) {
+            let rs = format!("{} {}", div_char, right_string);
+            item_string.push_str(&rs);
+            for _ in 0..width_delta {
+                item_string.push(space_char);
+            }
         }
     }
 

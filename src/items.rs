@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use crates_io_api::{CrateLinks, User, VersionLinks};
+use consecrates::api::{CrateLinks, User, VersionLinks};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Crate {
