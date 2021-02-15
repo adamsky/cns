@@ -1,6 +1,6 @@
 [package]
 name = "cns"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["adamsky <adamsky@enum.space>"]
 edition = "2018"
 description = "Search through Rust crates without leaving the terminal."

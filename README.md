@@ -35,7 +35,6 @@ cd ./cns
 cargo run --release
 ```
 
-
 ## How to use `cns`
 
 ```
@@ -70,3 +69,10 @@ cargo run --release
 <x> copy clone+compile+run one-liner to clipboard
 <C-q> | <C-c> | <q> quit
 ```  
+
+
+## Disable registry summary
+
+Pass `--no-summary` argument when running `cns` if you don't want to load
+a registry summary on application startup.
+
