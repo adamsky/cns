@@ -23,6 +23,28 @@ use tui::Terminal;
 mod items;
 use items::Crate;
 
+pub const INTRO: &str = r#"
+                  __
+.----.----.---.-.|  |_.-----.
+|  __|   _|  _  ||   _|  -__|
+|____|__| |___._||____|_____|
+.-----.---.-.--------.-----.
+|     |  _  |        |  -__|
+|__|__|___._|__|__|__|_____|
+.-----.-----.---.-.----.----.|  |--.
+|__ --|  -__|  _  |   _|  __||     |
+|_____|_____|___._|__| |____||__|__|
+
+<C-h> toggle help window 
+
+
+<recent>
+
+<just>
+
+<new>
+"#;
+
 pub const HELP: &str = r#"
                   __
 .----.----.---.-.|  |_.-----.
@@ -60,6 +82,11 @@ pub const README_SCROLL_AMOUNT: u16 = 8;
 enum Mode {
     Search,
     Results,
+}
+
+enum InfoScreen {
+    Intro,
+    Help,
 }
 
 const TAB_TITLES: [&str; 5] = ["Summary", "Compare", "Readme", "Repository", "Stats"];
@@ -169,6 +196,12 @@ impl CratesList {
 
 /// Defines the main application loop.
 fn main() -> Result<()> {
+    let mut get_summary = true;
+    let mut args = std::env::args();
+    if args.find(|a| a == "--no-summary").is_some() {
+        get_summary = false;
+    }
+
     // set up tui using crossterm backend
     let stdout = io::stdout();
     crossterm::terminal::enable_raw_mode().unwrap();
@@ -180,13 +213,20 @@ fn main() -> Result<()> {
     // create new crates.io client
     let client = Client::new("crate name search app (github.com/adamsky/cns)");
 
+    let mut intro_string = HELP.to_string();
+    // load up the registry summary data
+    if get_summary {
+        let summary = client.get_registry_summary()?;
+        intro_string = create_intro_string(summary)?;
+    }
+
     // initialize crate items list
     let mut crates = CratesList::default();
 
     // start the application with the cursor on the search bar
     let mut current_mode = Mode::Search;
-    // show application intro/help information
-    let mut show_intro = true;
+    // intro/help information screen toggle
+    let mut show_info = Some(InfoScreen::Intro);
 
     // set up application interface blocks
     let mut search_block_title = "Search".to_string();
@@ -277,7 +317,7 @@ fn main() -> Result<()> {
                 let mut rect = chunks_left[1];
 
                 // some changes to results block are needed for the compare tab
-                if results_current_tab == 1 && !show_intro {
+                if results_current_tab == 1 && show_info.is_none() {
                     rect = chunks_vert[1];
                     let comp_strings_titles = vec![
                         "Days since update ".to_string(),
@@ -334,10 +374,21 @@ fn main() -> Result<()> {
 
                 f.render_stateful_widget(results, rect, &mut crates.list_state);
 
-                if show_intro {
-                    let intro = widgets::Paragraph::new(HELP)
-                        .block(Block::default().borders(Borders::NONE));
-                    f.render_widget(intro, chunks_horiz[2]);
+                if let Some(info) = &show_info {
+                    match info {
+                        InfoScreen::Help => {
+                            let info = widgets::Paragraph::new(HELP)
+                                .wrap(Wrap { trim: false })
+                                .block(Block::default().borders(Borders::NONE));
+                            f.render_widget(info, chunks_horiz[2]);
+                        }
+                        InfoScreen::Intro => {
+                            let info = widgets::Paragraph::new(intro_string.clone())
+                                .wrap(Wrap { trim: false })
+                                .block(Block::default().borders(Borders::NONE));
+                            f.render_widget(info, chunks_horiz[2]);
+                        }
+                    }
                 } else {
                     let top_bar = Block::default().title("").borders(Borders::BOTTOM);
                     let spans = Spans::from(vec![
@@ -449,7 +500,24 @@ fn main() -> Result<()> {
                 Mode::Search => {
                     if key_event.modifiers == KeyModifiers::CONTROL {
                         match key_event.code {
-                            KeyCode::Char('h') => show_intro = !show_intro,
+                            KeyCode::Char('h') => {
+                                show_info = match show_info {
+                                    Some(info) => match info {
+                                        InfoScreen::Intro => Some(InfoScreen::Help),
+                                        _ => None,
+                                    },
+                                    None => Some(InfoScreen::Help),
+                                }
+                            }
+                            KeyCode::Char('j') => {
+                                show_info = match show_info {
+                                    Some(info) => match info {
+                                        InfoScreen::Help => Some(InfoScreen::Intro),
+                                        _ => None,
+                                    },
+                                    None => Some(InfoScreen::Intro),
+                                }
+                            }
                             KeyCode::Char('r') => current_mode = Mode::Results,
                             KeyCode::Char('s') => {
                                 if search_block_text.len() > 0 {
@@ -483,7 +551,7 @@ fn main() -> Result<()> {
                                 );
 
                                 crates.select(Some(0));
-                                show_intro = false;
+                                show_info = None;
                                 current_mode = Mode::Results;
                             }
                             _ => (),
@@ -496,7 +564,24 @@ fn main() -> Result<()> {
                     if key_event.modifiers == KeyModifiers::CONTROL {
                         match key_event.code {
                             // show intro with bindings help
-                            KeyCode::Char('h') => show_intro = !show_intro,
+                            KeyCode::Char('h') => {
+                                show_info = match show_info {
+                                    Some(info) => match info {
+                                        InfoScreen::Intro => Some(InfoScreen::Help),
+                                        _ => None,
+                                    },
+                                    None => Some(InfoScreen::Help),
+                                }
+                            }
+                            KeyCode::Char('j') => {
+                                show_info = match show_info {
+                                    Some(info) => match info {
+                                        InfoScreen::Help => Some(InfoScreen::Intro),
+                                        _ => None,
+                                    },
+                                    None => Some(InfoScreen::Intro),
+                                }
+                            }
                             // focus the search mode
                             KeyCode::Char('s') => current_mode = Mode::Search,
                             // open crate repository in the browser
@@ -696,4 +781,38 @@ fn create_list_item_string(
     }
 
     item_string
+}
+
+fn create_intro_string(summary: consecrates::api::Summary) -> Result<String> {
+    let mut intro = INTRO.to_string();
+    let mut recent = format!(
+        r#"most recent downloads:
+    {} | {} | {} | {}"#,
+        summary.most_recently_downloaded[0].name,
+        summary.most_recently_downloaded[1].name,
+        summary.most_recently_downloaded[2].name,
+        summary.most_recently_downloaded[3].name
+    );
+    let mut just = format!(
+        r#"just updated:
+    {} | {} | {} | {}"#,
+        summary.just_updated[0].name,
+        summary.just_updated[1].name,
+        summary.just_updated[2].name,
+        summary.just_updated[3].name
+    );
+    let mut new = format!(
+        r#"new crates:
+    {} | {} | {} | {}"#,
+        summary.new_crates[0].name,
+        summary.new_crates[1].name,
+        summary.new_crates[2].name,
+        summary.new_crates[3].name
+    );
+
+    intro = intro.replace("<recent>", &recent);
+    intro = intro.replace("<just>", &just);
+    intro = intro.replace("<new>", &new);
+
+    Ok(intro)
 }
