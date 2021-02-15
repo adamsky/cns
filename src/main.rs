@@ -10,7 +10,10 @@ use consecrates::Client;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use clipboard::ClipboardProvider;
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+use http_req::uri::Uri;
+use items::Crate;
 use tui::backend::CrosstermBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
@@ -21,8 +24,6 @@ use tui::widgets::{
 use tui::Terminal;
 
 mod items;
-use http_req::uri::Uri;
-use items::Crate;
 
 pub const INTRO: &str = r#"
                   __
@@ -147,8 +148,9 @@ impl CratesList {
 
                     let mut buffer = vec![];
                     if let Ok(resp) = http_req::request::get(url, &mut buffer) {
-                        items_arc_clone.lock().unwrap().get_mut(n).unwrap().readme =
-                            Some(String::from_utf8(buffer.clone()).unwrap());
+                        if let Ok(s) = String::from_utf8(buffer) {
+                            items_arc_clone.lock().unwrap().get_mut(n).unwrap().readme = Some(s);
+                        }
                     }
                 }
             }
@@ -207,7 +209,7 @@ fn main() -> Result<()> {
     }
 
     #[cfg(feature = "clipboard")]
-    let mut clipboard = arboard::Clipboard::new()?;
+    let mut clipboard = clipboard::ClipboardContext::new().unwrap();
 
     // set up tui using crossterm backend
     let stdout = io::stdout();
@@ -734,7 +736,7 @@ fn main() -> Result<()> {
                                                 "{} = \"{}\"",
                                                 sel_crate.id, sel_crate.max_version
                                             );
-                                            clipboard.set_text(clip_text)?;
+                                            clipboard.set_contents(clip_text);
                                         }
                                     }
                                 }
@@ -755,7 +757,7 @@ fn main() -> Result<()> {
                                                     "git clone {} && cd {} && cargo run --release",
                                                     repo, repo_name
                                                 );
-                                                clipboard.set_text(clip_text)?;
+                                                clipboard.set_contents(clip_text);
                                             }
                                         }
                                     }
