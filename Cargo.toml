@@ -13,7 +13,7 @@ license = "MIT"
 anyhow = "1.0.38"
 tui = { version = "0.14", default-features = false, features = ["crossterm"] }
 crossterm = "0.19.0"
-consecrates = "0.1.0"
+consecrates = "0.1.1"
 http_req  = { version = "0.7.2", default-features = false, features = ["rust-tls"] }
 chrono = "0.4.19"
 webbrowser = "0.5.5"

@@ -77,9 +77,9 @@ dependencies = [
 
 [[package]]
 name = "consecrates"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a18fcefbb7d3f74eed71e3a3fe027495a318e4fc4b16d44f74a88c3c61c46cf4"
+checksum = "3997f92f78d0ecd87f0b7bbe6858ec0b213b923c5d463d0c41d09c2928863b34"
 dependencies = [
  "anyhow",
  "chrono",
