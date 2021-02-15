@@ -21,6 +21,7 @@ use tui::widgets::{
 use tui::Terminal;
 
 mod items;
+use http_req::uri::Uri;
 use items::Crate;
 
 pub const INTRO: &str = r#"
@@ -67,11 +68,14 @@ pub const HELP: &str = r#"
 
 # results mode
 <Escape> | <C-s> focus the search bar
-<j>, <k>, <up>, <down> move up and down the results
+<k>, <j>, <up>, <down> move up and down the results
 <h>, <l>, <left>, <right> move left and right between result tabs
+<C-u>, <C-d> scroll up and down the readme view
 <C-g> go to documentation (browser)
 <C-r> go to repository (browser)
 <Enter> go to crate (browser)
+<c> copy Cargo.toml dependency line to clipboard
+<x> copy clone+compile+run one-liner to clipboard
 <C-q> | <C-c> | <q> quit
 
 "#;
@@ -202,6 +206,9 @@ fn main() -> Result<()> {
         get_summary = false;
     }
 
+    #[cfg(feature = "clipboard")]
+    let mut clipboard = arboard::Clipboard::new()?;
+
     // set up tui using crossterm backend
     let stdout = io::stdout();
     crossterm::terminal::enable_raw_mode().unwrap();
@@ -211,7 +218,7 @@ fn main() -> Result<()> {
     terminal.clear()?;
 
     // create new crates.io client
-    let client = Client::new("crate name search app (github.com/adamsky/cns)");
+    let client = Client::new("crate_name_search (github.com/adamsky/cns)");
 
     let mut intro_string = HELP.to_string();
     // load up the registry summary data
@@ -320,9 +327,12 @@ fn main() -> Result<()> {
                 if results_current_tab == 1 && show_info.is_none() {
                     rect = chunks_vert[1];
                     let comp_strings_titles = vec![
-                        "Days since update ".to_string(),
-                        "All-time ".to_string(),
-                        "Recent".to_string(),
+                        "Since creation ".to_string(),
+                        "Since update ".to_string(),
+                        "All-time dl ".to_string(),
+                        "Recent dl ".to_string(),
+                        "Max version ".to_string(),
+                        "Repo host ".to_string(),
                     ];
                     let comp_strings_len: Vec<usize> =
                         comp_strings_titles.iter().map(|cs| cs.len()).collect();
@@ -333,12 +343,28 @@ fn main() -> Result<()> {
                             Some(s) => s.to_string(),
                             None => "n/a".to_string(),
                         };
+                        let days_since_creation =
+                            Utc::now().sub(item.created_at).num_days().to_string();
                         let days_since_update =
                             Utc::now().sub(item.updated_at).num_days().to_string();
+                        let max_version = item.max_version.clone();
+                        let mut repo_host = "n/a".to_string();
+
+                        if let Some(repo_url) = &item.repository {
+                            if let Ok(uri) = repo_url.parse::<Uri>() {
+                                if let Some(host) = uri.host() {
+                                    repo_host = host.to_string();
+                                }
+                            }
+                        }
+
                         let comp_strings = vec![
+                            days_since_creation,
                             days_since_update,
                             item.downloads.to_string(),
                             recent_downloads_string,
+                            max_version,
+                            repo_host,
                         ];
                         let item_string = create_list_item_string(
                             item.name.to_string(),
@@ -362,6 +388,8 @@ fn main() -> Result<()> {
                         '─',
                         rect.width as usize,
                     );
+                } else {
+                    results_block_label = "Results".to_string();
                 }
 
                 let mut results_block = Block::default()
@@ -411,21 +439,26 @@ fn main() -> Result<()> {
                                         format!(
                                             "{}\n\n\
                                             {}\n\n\n\
-                                            All-time: {}\n\
-                                            Recent: {}\n\
+                                            Max version: {}\n\
+                                            Homepage: {}\n\n\
+                                            All-time downloads: {}\n\
+                                            Recent downloads: {}\n\
+                                            Days since last update: {}\n\
+                                            \n\
                                             First created: {}\n\
                                             Last update: {}\n\
-                                            Days since last update: {}\n\
                                             \n\
                                             Documentation: {}\n\
                                             Repository: {}\n",
                                             item.name,
                                             item.description.as_ref().unwrap_or(&"".to_string()),
+                                            item.max_version,
+                                            item.homepage.clone().unwrap_or("n/a".to_string()),
                                             item.downloads,
                                             item.recent_downloads.unwrap_or(0),
+                                            Utc::now().sub(item.updated_at).num_days(),
                                             item.created_at,
                                             item.updated_at,
-                                            Utc::now().sub(item.updated_at).num_days(),
                                             item.documentation
                                                 .as_ref()
                                                 .unwrap_or(&"unavailable".to_string()),
@@ -691,6 +724,42 @@ fn main() -> Result<()> {
                                     let num = crates.items.lock().unwrap().len() - 1;
                                     crates.select(Some(num));
                                 }
+                                #[cfg(feature = "clipboard")]
+                                'c' => {
+                                    if let Some(selection) = crates.list_state.selected() {
+                                        if let Some(sel_crate) =
+                                            crates.items.lock().unwrap().get(selection)
+                                        {
+                                            let clip_text = format!(
+                                                "{} = \"{}\"",
+                                                sel_crate.id, sel_crate.max_version
+                                            );
+                                            clipboard.set_text(clip_text)?;
+                                        }
+                                    }
+                                }
+                                #[cfg(feature = "clipboard")]
+                                'x' => {
+                                    if let Some(selection) = crates.list_state.selected() {
+                                        if let Some(sel_crate) =
+                                            crates.items.lock().unwrap().get(selection)
+                                        {
+                                            if let Some(repo) = &sel_crate.repository {
+                                                let uri: Uri = repo.parse()?;
+                                                let repo_name = uri
+                                                    .path()
+                                                    .unwrap()
+                                                    .rsplit('/')
+                                                    .collect::<Vec<&str>>()[0];
+                                                let clip_text = format!(
+                                                    "git clone {} && cd {} && cargo run --release",
+                                                    repo, repo_name
+                                                );
+                                                clipboard.set_text(clip_text)?;
+                                            }
+                                        }
+                                    }
+                                }
                                 // quit the application
                                 'q' => break,
                                 _ => (),
@@ -761,7 +830,9 @@ fn create_list_item_string(
     // calculate space between the end of the left and beginning of the right
     let mut left_right_delta = rect_width - left_string.len();
     for right_string_width in &right_strings_width {
-        left_right_delta = left_right_delta.sub(right_string_width + 4);
+        left_right_delta = left_right_delta
+            .checked_sub(right_string_width + 4)
+            .unwrap_or(0);
     }
 
     // push the right amount of space characters
