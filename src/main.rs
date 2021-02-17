@@ -214,6 +214,7 @@ fn main() -> Result<()> {
     // set up tui using crossterm backend
     let stdout = io::stdout();
     crossterm::terminal::enable_raw_mode()?;
+    crossterm::execute!(io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     let mut stdout = io::stdout();
@@ -782,6 +783,7 @@ fn main() -> Result<()> {
     // clean up the terminal before exit
     terminal.clear().unwrap();
     crossterm::terminal::disable_raw_mode()?;
+    crossterm::execute!(io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;
 
     Ok(())
 }
