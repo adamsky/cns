@@ -10,10 +10,8 @@ use consecrates::Client;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use clipboard::ClipboardProvider;
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
 use http_req::uri::Uri;
-use items::Crate;
 use tui::backend::CrosstermBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout};
 use tui::style::{Color, Modifier, Style};
@@ -22,6 +20,11 @@ use tui::widgets::{
     self, Block, BorderType, Borders, List, ListItem, ListState, Paragraph, Tabs, Widget, Wrap,
 };
 use tui::Terminal;
+
+use items::Crate;
+
+#[cfg(feature = "clipboard")]
+use clipboard::ClipboardProvider;
 
 mod items;
 
