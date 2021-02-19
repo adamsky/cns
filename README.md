@@ -20,7 +20,6 @@ socket sort=update
 key=crates search sort=dl 
 ```
 
-
 ## How to install `cns`
 
 ```
@@ -33,6 +32,18 @@ or
 git clone https://github.com/adamsky/cns
 cd ./cns
 cargo run --release
+```
+
+or, if you're on Arch Linux:
+
+```sh
+# Use an AUR helper, e.g.:
+paru -S cns
+
+# or compile with makepkg:
+git clone https://aur.archlinux.org/cns.git
+cd ./cns
+makepkg -si
 ```
 
 ## How to use `cns`
