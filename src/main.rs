@@ -205,10 +205,23 @@ impl CratesList {
 
 /// Defines the main application loop.
 fn main() -> Result<()> {
-    let mut get_summary = true;
-    let mut args = std::env::args();
-    if args.find(|a| a == "--no-summary").is_some() {
-        get_summary = false;
+    let args = std::env::args().skip(1);
+
+    let mut get_summary = false;
+    let mut search = String::new();
+    let mut blazing_fast = false;
+
+    for arg in args {
+        // showing registry summary is optional
+        if arg == "--summary" {
+            get_summary = true;
+        } else {
+            // put any other input directly into the search window
+            search.push_str(&format!("{arg} "));
+        }
+    }
+    if !search.is_empty() {
+        blazing_fast = true;
     }
 
     #[cfg(feature = "clipboard")]
@@ -243,12 +256,20 @@ fn main() -> Result<()> {
 
     // set up application interface blocks
     let mut search_block_title = "Search".to_string();
-    let mut search_block_text = "".to_string();
+    let mut search_block_text = search.trim().to_string();
     let mut results_block_label = "Results".to_string();
     let mut results_current_tab = 0;
     let mut search_block_border_style = Style::default().fg(tui::style::Color::DarkGray);
     let mut results_block_border_style = Style::default().fg(tui::style::Color::DarkGray);
     let mut results_block_highlight_style = Style::default().bg(tui::style::Color::DarkGray);
+
+    // go directly to results using the input provided on program startup
+    if blazing_fast {
+        crates = CratesList::new(crate_query(&search_block_text, &client).unwrap());
+        crates.select(Some(0));
+        show_info = None;
+        current_mode = Mode::Results;
+    }
 
     // store some information on previously pressed keys to support basic
     // vim-like shortcuts like `gg`, along with num prefixed ones like `5j`
@@ -588,7 +609,6 @@ fn main() -> Result<()> {
                                 crates = CratesList::new(
                                     crate_query(&search_block_text, &client).unwrap(),
                                 );
-
                                 crates.select(Some(0));
                                 show_info = None;
                                 current_mode = Mode::Results;
