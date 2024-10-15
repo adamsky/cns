@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use std::convert::TryFrom;
 use std::io::{self, Write};
 use std::ops::Sub;
 use std::sync::{Arc, Mutex};
@@ -10,7 +11,7 @@ use consecrates::Client;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use http_req::uri::Uri;
 use tui::backend::CrosstermBackend;
 use tui::layout::{Alignment, Constraint, Direction, Layout};
@@ -274,14 +275,8 @@ fn main() -> Result<()> {
     // store some information on previously pressed keys to support basic
     // vim-like shortcuts like `gg`, along with num prefixed ones like `5j`
     let mut num_input = None;
-    let mut last_key = KeyEvent {
-        code: KeyCode::Null,
-        modifiers: KeyModifiers::NONE,
-    };
-    let mut previous_key = KeyEvent {
-        code: KeyCode::Null,
-        modifiers: KeyModifiers::NONE,
-    };
+    let mut last_key = KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
+    let mut previous_key = KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
 
     // start main application loop
     loop {
@@ -378,7 +373,7 @@ fn main() -> Result<()> {
                         let mut repo_host = "n/a".to_string();
 
                         if let Some(repo_url) = &item.repository {
-                            if let Ok(uri) = repo_url.parse::<Uri>() {
+                            if let Ok(uri) = Uri::try_from(repo_url.as_str()) {
                                 if let Some(host) = uri.host() {
                                     repo_host = host.to_string();
                                 }
@@ -771,7 +766,7 @@ fn main() -> Result<()> {
                                             crates.items.lock().unwrap().get(selection)
                                         {
                                             if let Some(repo) = &sel_crate.repository {
-                                                let uri: Uri = repo.parse()?;
+                                                let uri = Uri::try_from(repo.as_str())?;
                                                 let repo_name = uri
                                                     .path()
                                                     .unwrap()
